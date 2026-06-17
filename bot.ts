@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "npm:grammy@1.21.1";
+import { Bot, InlineKeyboard, webhookCallback } from "npm:grammy@1.21.1";
 
 // 1. Инициализация переменных окружения
 const TG_TOKEN = Deno.env.get("TG_TOKEN");
@@ -14,7 +14,7 @@ if (!TG_TOKEN || !CATBOX_USERHASH || !UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_R
 const OWNER_ID = 8612571650;
 const bot = new Bot(TG_TOKEN);
 
-// Глобальный перехватчик ошибок — теперь бот никогда не упадет и не выключится!
+// Глобальный перехватчик ошибок
 bot.catch((err) => {
   console.error(`[Ошибка в работе бота]:`, err.error);
 });
@@ -207,7 +207,7 @@ bot.on("callback_query:data", async (ctx) => {
   if (state !== "loading_photos") {
     try {
       await ctx.answerCallbackQuery("Вы уже завершили отправку или не начинали её.");
-    } catch (_e) { /* Игнорируем устаревшие сессии */ }
+    } catch (_e) { /* Игнорируем */ }
     return;
   }
 
@@ -216,13 +216,13 @@ bot.on("callback_query:data", async (ctx) => {
   if (photos.length === 0) {
     try {
       await ctx.answerCallbackQuery("Вы не отправили ни одной фотографии!");
-    } catch (_e) { /* Игнорируем устаревшие сессии */ }
+    } catch (_e) { /* Игнорируем */ }
     return;
   }
 
   try {
     await ctx.answerCallbackQuery();
-  } catch (_e) { /* Игнорируем устаревшие сессии */ }
+  } catch (_e) { /* Игнорируем */ }
   
   await setUserState(userId, null);
 
@@ -261,7 +261,7 @@ bot.on("callback_query:data", async (ctx) => {
     try {
       await bot.api.editMessageText(ctx.chat!.id, statusMessage.message_id, "❌ Произошла ошибка во время загрузки файлов на Catbox.");
     } catch (_e) { /* Игнорируем */ }
-  } {
+  } finally {
     await clearUserPhotos(userId);
   }
 });
@@ -276,10 +276,22 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-// --- ЗАПУСК БОТА И ВЕБ-СЕРВЕРА ДЛЯ ДЕПЛОЯ ---
-console.log("Бот запускается...");
-bot.start();
+// --- ЗАПУСК ВЕБ-СЕРВЕРА WEBHOOK ---
+const handleUpdate = webhookCallback(bot, "std/http");
 
-Deno.serve({ port: 8000 }, () => {
-  return new Response("Бот онлайн и работает через Long Polling!", { status: 200 });
+console.log("Бот успешно инициализирован. Запуск веб-сервера...");
+
+Deno.serve({ port: 8000 }, async (req) => {
+  const url = new URL(req.url);
+  
+  if (req.method === "POST" && url.pathname === `/webhook/${TG_TOKEN}`) {
+    try {
+      return await handleUpdate(req);
+    } catch (err) {
+      console.error(err);
+      return new Response("Internal Error", { status: 500 });
+    }
+  }
+  
+  return new Response("Бот онлайн и работает через Webhook!", { status: 200 });
 });
