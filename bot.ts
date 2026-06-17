@@ -14,6 +14,11 @@ if (!TG_TOKEN || !CATBOX_USERHASH || !UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_R
 const OWNER_ID = 8612571650;
 const bot = new Bot(TG_TOKEN);
 
+// Глобальный перехватчик ошибок — теперь бот никогда не упадет и не выключится!
+bot.catch((err) => {
+  console.error(`[Ошибка в работе бота]:`, err.error);
+});
+
 // --- Вспомогательные функции для работы с Upstash Redis ---
 async function redisFetch(command: string, args: (string | number)[]) {
   const response = await fetch(`${UPSTASH_REDIS_REST_URL}/${command}`, {
@@ -200,18 +205,25 @@ bot.on("callback_query:data", async (ctx) => {
   const state = await getUserState(userId);
 
   if (state !== "loading_photos") {
-    await ctx.answerCallbackQuery("Вы уже завершили отправку или не начинали её.");
+    try {
+      await ctx.answerCallbackQuery("Вы уже завершили отправку или не начинали её.");
+    } catch (_e) { /* Игнорируем устаревшие сессии */ }
     return;
   }
 
   const photos = await getUserPhotos(userId);
 
   if (photos.length === 0) {
-    await ctx.answerCallbackQuery("Вы не отправили ни одной фотографии!");
+    try {
+      await ctx.answerCallbackQuery("Вы не отправили ни одной фотографии!");
+    } catch (_e) { /* Игнорируем устаревшие сессии */ }
     return;
   }
 
-  await ctx.answerCallbackQuery();
+  try {
+    await ctx.answerCallbackQuery();
+  } catch (_e) { /* Игнорируем устаревшие сессии */ }
+  
   await setUserState(userId, null);
 
   const statusMessage = await ctx.editMessageText("Загрузка...");
@@ -246,8 +258,10 @@ bot.on("callback_query:data", async (ctx) => {
 
   } catch (error) {
     console.error(error);
-    await bot.api.editMessageText(ctx.chat!.id, statusMessage.message_id, "❌ Произошла ошибка во время загрузки файлов на Catbox.");
-  } finally {
+    try {
+      await bot.api.editMessageText(ctx.chat!.id, statusMessage.message_id, "❌ Произошла ошибка во время загрузки файлов на Catbox.");
+    } catch (_e) { /* Игнорируем */ }
+  } {
     await clearUserPhotos(userId);
   }
 });
@@ -266,7 +280,6 @@ setInterval(async () => {
 console.log("Бот запускается...");
 bot.start();
 
-// Запускаем пустой сервер на порту 8000, чтобы Deno Deploy видел, что приложение работает
 Deno.serve({ port: 8000 }, () => {
   return new Response("Бот онлайн и работает через Long Polling!", { status: 200 });
 });
