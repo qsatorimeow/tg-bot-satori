@@ -294,28 +294,26 @@ setInterval(async () => {
 const handleUpdate = webhookCallback(bot, "std/http");
 let webhookSet = false;
 
-console.log("Бот инициализирован. Запуск открытого веб-сервера...");
-
 Deno.serve({ port: 8000 }, async (req) => {
-  // При самом первом входящем запросе жестко ставим правильный вебхук
   if (!webhookSet) {
     try {
-      const targetWebhook = `https://${MAIN_DOMAIN}/webhook-routing`;
+      const targetWebhook = `https://${MAIN_DOMAIN}/`;
       await bot.api.setWebhook(targetWebhook, { drop_pending_updates: true });
-      console.log(`[Успех] Постоянный вебхук успешно привязан к Telegram: ${targetWebhook}`);
+      console.log(`[Успех] Вебхук установлен: ${targetWebhook}`);
       webhookSet = true;
     } catch (err) {
-      console.error("[Ошибка] Не удалось привязать вебхук:", err);
+      console.error("[Ошибка webhook]:", err);
     }
   }
 
-  // Принимаем абсолютно любые POST-запросы от серверов Telegram без проверки путей
   if (req.method === "POST") {
     try {
       return await handleUpdate(req);
     } catch (err) {
-      console.error("Ошибка обработки апдейта grammY:", err);
-      return new Response("Update Error", { status: 200 }); // Всегда отдаем 200, чтобы TG не спамил запросами
+      console.error("Ошибка grammY:", err);
+      return new Response("Ok", { status: 200 });
     }
   }
   
+  return new Response("Бот онлайн!", { status: 200 });
+});
