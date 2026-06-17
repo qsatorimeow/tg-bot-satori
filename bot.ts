@@ -13,8 +13,6 @@ if (!TG_TOKEN || !CATBOX_USERHASH || !UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_R
 
 const OWNER_ID = 8612571650;
 const bot = new Bot(TG_TOKEN);
-
-// Наш неизменяемый главный домен
 const MAIN_DOMAIN = "tg-bot-satori.qsatorimeow.deno.net";
 
 // Глобальный перехватчик ошибок
@@ -129,7 +127,7 @@ bot.command("start", async (ctx) => {
 bot.command("help", async (ctx) => {
   let helpText = "📚 *Доступные команды:*\n\n" +
     "/load — Начать загрузку фотографий\n" +
-    "/id — Узнать свой Telegram ID\n" +
+    "/id — Узнать ID пользователя (отправьте команду или перешлите сообщение пользователя)\n" +
     "/help — Показать это меню\n";
 
   if (ctx.from?.id === OWNER_ID) {
@@ -184,9 +182,22 @@ bot.command("delaccess", async (ctx) => {
   await ctx.reply(`Права у пользователя ${targetId} успешно отозваны.`);
 });
 
-// /id
+// /id (Улучшенная версия: выдает ваш ID или ID автора пересланного сообщения)
 bot.command("id", async (ctx) => {
-  await ctx.reply(`Ваш Telegram ID: \`${ctx.from!.id}\`\n Чтобы узнать ID другого человека, попросите его написать вам или перешлите его сообщение сюда.`, { parse_mode: "Markdown" });
+  if (ctx.message?.reply_to_message?.from) {
+    const replyId = ctx.message.reply_to_message.from.id;
+    return await ctx.reply(`Telegram ID пользователя из ответа: \`${replyId}\``, { parse_mode: "Markdown" });
+  }
+  
+  await ctx.reply(`Ваш Telegram ID: \`${ctx.from!.id}\`\n\n💡 *Как узнать ID другого человека:* Просто перешлите сюда любое его сообщение и напишите /id в ответ на него.`, { parse_mode: "Markdown" });
+});
+
+// Логика перехвата пересланных сообщений без команды
+bot.on("message", async (ctx, next) => {
+  if (ctx.message?.forward_from) {
+    return await ctx.reply(`ID автора пересланного сообщения: \`${ctx.message.forward_from.id}\``, { parse_mode: "Markdown" });
+  }
+  await next();
 });
 
 // --- ОБРАБОТКА МЕДИАФАЙЛОВ ---
@@ -279,34 +290,32 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-// --- ЗАПУСК ВЕБ-СЕРВЕРА С УЛУЧШЕННОЙ АВТО-РЕГИСТРАЦИЕЙ ВЕБХУКА ---
+// --- ЗАПУСК НАДЕЖНОГО ВЕБ-СЕРВЕРА WEBHOOK ---
 const handleUpdate = webhookCallback(bot, "std/http");
 let webhookSet = false;
 
-Deno.serve({ port: 8000 }, async (req) => {
-  const url = new URL(req.url);
+console.log("Бот инициализирован. Запуск открытого веб-сервера...");
 
-  // Каждое включение жестко регистрирует именно ПОСТОЯННЫЙ главный домен
+Deno.serve({ port: 8000 }, async (req) => {
+  // При самом первом входящем запросе жестко ставим правильный вебхук
   if (!webhookSet) {
     try {
-      const webhookUrl = `https://${MAIN_DOMAIN}/webhook/${TG_TOKEN}`;
-      await bot.api.setWebhook(webhookUrl, { drop_pending_updates: true });
-      console.log(`[Успех] Постоянный Webhook установлен на адрес: ${webhookUrl}`);
+      const targetWebhook = `https://${MAIN_DOMAIN}/webhook-routing`;
+      await bot.api.setWebhook(targetWebhook, { drop_pending_updates: true });
+      console.log(`[Успех] Постоянный вебхук успешно привязан к Telegram: ${targetWebhook}`);
       webhookSet = true;
     } catch (err) {
-      console.error("[Ошибка] Не удалось установить Webhook:", err);
+      console.error("[Ошибка] Не удалось привязать вебхук:", err);
     }
   }
-  
-  // Обработка сообщений от Telegram
-  if (req.method === "POST" && url.pathname === `/webhook/${TG_TOKEN}`) {
+
+  // Принимаем абсолютно любые POST-запросы от серверов Telegram без проверки путей
+  if (req.method === "POST") {
     try {
       return await handleUpdate(req);
     } catch (err) {
-      console.error(err);
-      return new Response("Internal Error", { status: 500 });
+      console.error("Ошибка обработки апдейта grammY:", err);
+      return new Response("Update Error", { status: 200 }); // Всегда отдаем 200, чтобы TG не спамил запросами
     }
   }
   
-  return new Response("Бот онлайн и полностью готов к работе!", { status: 200 });
-});
