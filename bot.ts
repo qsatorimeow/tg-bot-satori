@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "npm:grammy@1.21.1";
+import { Bot, InlineKeyboard, webhookCallback } from "npm:grammy@1.21.1";
 
 // 1. Инициализация переменных окружения
 const TG_TOKEN = Deno.env.get("TG_TOKEN");
@@ -276,18 +276,34 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-// --- ЗАПУСК БОТА (Long Polling с очисткой старых сессий) ---
-console.log("Очистка старых сессий и запуск бота...");
+// --- ЗАПУСК ВЕБ-СЕРВЕРА С АВТО-РЕГИСТРАЦИЕЙ ВЕБХУКА ---
+const handleUpdate = webhookCallback(bot, "std/http");
+let webhookSet = false;
 
-// Сначала полностью удаляем любые вебхуки, если они были привязаны
-await bot.api.deleteWebhook({ drop_pending_updates: true });
+Deno.serve({ port: 8000 }, async (req) => {
+  const url = new URL(req.url);
 
-// Запускаем опрос заново
-bot.start({
-  allowed_updates: ["message", "callback_query"],
-});
-
-// Оставляем пустой порт для Deno Deploy, чтобы билд не падал
-Deno.serve({ port: 8000 }, () => {
-  return new Response("Бот онлайн и слушает Long Polling!", { status: 200 });
+  // При самом первом запросе к серверу бот автоматически привяжет свой Webhook в Telegram
+  if (!webhookSet && url.hostname.includes("deno.net")) {
+    try {
+      const webhookUrl = `https://${url.hostname}/webhook/${TG_TOKEN}`;
+      await bot.api.setWebhook(webhookUrl, { drop_pending_updates: true });
+      console.log(`[Успех] Telegram Webhook автоматически установлен на адрес: ${webhookUrl}`);
+      webhookSet = true;
+    } catch (err) {
+      console.error("[Ошибка] Не удалось автоматически установить Webhook:", err);
+    }
+  }
+  
+  // Обработка сообщений от Telegram
+  if (req.method === "POST" && url.pathname === `/webhook/${TG_TOKEN}`) {
+    try {
+      return await handleUpdate(req);
+    } catch (err) {
+      console.error(err);
+      return new Response("Internal Error", { status: 500 });
+    }
+  }
+  
+  return new Response("Бот онлайн и полностью готов к работе!", { status: 200 });
 });
