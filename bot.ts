@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard } from "npm:grammy@1.21.1";
 
 // 1. Инициализация переменных окружения
 const TG_TOKEN = Deno.env.get("TG_TOKEN");
@@ -89,22 +89,20 @@ async function uploadToCatbox(fileUrl: string): Promise<string> {
 // --- МИДЛВАРЬ: Проверка ЛС и прав доступа ---
 bot.use(async (ctx, next) => {
   if (!ctx.chat || ctx.chat.type !== "private") {
-    return; // Игнорируем группы и каналы полностью
+    return; 
   }
 
   const userId = ctx.from?.id;
   if (!userId) return;
 
-  // Разрешаем команду /start всем, чтобы они могли увидеть ссылку на форму
   if (ctx.message?.text === "/start") {
     await next();
     return;
   }
 
-  // Для остальных команд и действий проверяем доступ
   const allowed = await hasAccess(userId);
   if (!allowed) {
-    return; // Если доступа нет, бот просто молчит
+    return; 
   }
 
   await next();
@@ -158,7 +156,6 @@ bot.command("setaccess", async (ctx) => {
   await grantAccess(targetId);
   await ctx.reply(`Права пользователю ${targetId} успешно выданы.`);
 
-  // Пробуем отправить уведомление пользователю в ЛС
   try {
     await bot.api.sendMessage(targetId, "Доступ выдан, напишите /help");
   } catch (_e) {
