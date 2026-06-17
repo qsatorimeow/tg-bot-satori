@@ -14,6 +14,9 @@ if (!TG_TOKEN || !CATBOX_USERHASH || !UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_R
 const OWNER_ID = 8612571650;
 const bot = new Bot(TG_TOKEN);
 
+// Наш неизменяемый главный домен
+const MAIN_DOMAIN = "tg-bot-satori.qsatorimeow.deno.net";
+
 // Глобальный перехватчик ошибок
 bot.catch((err) => {
   console.error(`[Ошибка в работе бота]:`, err.error);
@@ -276,22 +279,22 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-// --- ЗАПУСК ВЕБ-СЕРВЕРА С АВТО-РЕГИСТРАЦИЕЙ ВЕБХУКА ---
+// --- ЗАПУСК ВЕБ-СЕРВЕРА С УЛУЧШЕННОЙ АВТО-РЕГИСТРАЦИЕЙ ВЕБХУКА ---
 const handleUpdate = webhookCallback(bot, "std/http");
 let webhookSet = false;
 
 Deno.serve({ port: 8000 }, async (req) => {
   const url = new URL(req.url);
 
-  // При самом первом запросе к серверу бот автоматически привяжет свой Webhook в Telegram
-  if (!webhookSet && url.hostname.includes("deno.net")) {
+  // Каждое включение жестко регистрирует именно ПОСТОЯННЫЙ главный домен
+  if (!webhookSet) {
     try {
-      const webhookUrl = `https://${url.hostname}/webhook/${TG_TOKEN}`;
+      const webhookUrl = `https://${MAIN_DOMAIN}/webhook/${TG_TOKEN}`;
       await bot.api.setWebhook(webhookUrl, { drop_pending_updates: true });
-      console.log(`[Успех] Telegram Webhook автоматически установлен на адрес: ${webhookUrl}`);
+      console.log(`[Успех] Постоянный Webhook установлен на адрес: ${webhookUrl}`);
       webhookSet = true;
     } catch (err) {
-      console.error("[Ошибка] Не удалось автоматически установить Webhook:", err);
+      console.error("[Ошибка] Не удалось установить Webhook:", err);
     }
   }
   
