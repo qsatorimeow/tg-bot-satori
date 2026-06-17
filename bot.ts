@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, webhookCallback } from "npm:grammy@1.21.1";
+import { Bot, InlineKeyboard } from "npm:grammy@1.21.1";
 
 // 1. Инициализация переменных окружения
 const TG_TOKEN = Deno.env.get("TG_TOKEN");
@@ -276,22 +276,18 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-// --- ЗАПУСК ВЕБ-СЕРВЕРА WEBHOOK ---
-const handleUpdate = webhookCallback(bot, "std/http");
+// --- ЗАПУСК БОТА (Long Polling с очисткой старых сессий) ---
+console.log("Очистка старых сессий и запуск бота...");
 
-console.log("Бот успешно инициализирован. Запуск веб-сервера...");
+// Сначала полностью удаляем любые вебхуки, если они были привязаны
+await bot.api.deleteWebhook({ drop_pending_updates: true });
 
-Deno.serve({ port: 8000 }, async (req) => {
-  const url = new URL(req.url);
-  
-  if (req.method === "POST" && url.pathname === `/webhook/${TG_TOKEN}`) {
-    try {
-      return await handleUpdate(req);
-    } catch (err) {
-      console.error(err);
-      return new Response("Internal Error", { status: 500 });
-    }
-  }
-  
-  return new Response("Бот онлайн и работает через Webhook!", { status: 200 });
+// Запускаем опрос заново
+bot.start({
+  allowed_updates: ["message", "callback_query"],
+});
+
+// Оставляем пустой порт для Deno Deploy, чтобы билд не падал
+Deno.serve({ port: 8000 }, () => {
+  return new Response("Бот онлайн и слушает Long Polling!", { status: 200 });
 });
